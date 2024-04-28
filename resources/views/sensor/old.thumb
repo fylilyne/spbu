@@ -1,0 +1,164 @@
+@section('css')
+  <style>
+    #realTimeChartContainer {
+       
+        }
+  </style>
+@stop
+
+@section('js')
+  
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+<script>
+  async function fetchData() {
+      try {
+        const response = await fetch('{{route("get_data_log_sensor")}}?device_key={{$device_key}}');
+        const data = await response.json();
+        return data.reverse().slice(0, 10);
+      } catch (error) {
+          console.error('Error fetching data:', error);
+          return [];
+      }
+  }
+
+  function updateChart(chart) {
+      fetchData().then(newData => {
+          const timestamps = newData.map(data => data.timestamp);
+          const voltages = newData.map(data => data.voltage);
+
+          // Check if voltage exceeds 10 and set borderColor accordingly
+          const borderColor = voltages.map(value => (value > {{$max_voltage}} ? 'red' : 'black'));
+
+          chart.data.labels = timestamps.map(time => new Date(time).toLocaleTimeString());
+          chart.data.datasets[0].data = voltages;
+          chart.data.datasets[0].borderColor = borderColor;
+          chart.data.datasets[0].backgroundColor = 'rgba(0, 0, 0, 0.2)';
+
+          chart.update();
+      });
+  }
+
+  function initChart() {
+      const ctx = document.getElementById('realTimeChart').getContext('2d');
+
+      const chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+              labels: [],
+              datasets: [{
+                  label: 'Realtime Voltage',
+                  borderColor: 'black', // Set the line color to black
+                  backgroundColor: 'rgba(0, 0, 0, 0.2)', // Set the fill color to black with transparency
+                  fill: true,
+                  lineTension: 0,
+                  data: [],
+              }],
+          },
+          options: {
+              scales: {
+                  x: [{
+                      type: 'realtime',
+                      realtime: {
+                          refresh: 1000,
+                          delay: 2000,
+                      },
+                  }],
+                  y: [{
+                      type: 'linear',
+                      display: true,
+                      position: 'left',
+                  }],
+              },
+              plugins: {
+                  datalabels: {
+                      display: false,
+                  },
+                  drawHorizontalLine: {
+                      y: 10,
+                      borderColor: 'red',
+                      borderWidth: 1,
+                  },
+              },
+          },
+      });
+
+      // Initial data load
+      fetchData().then(initialData => {
+          chart.data.labels = initialData.map(data => new Date(data.timestamp).toLocaleTimeString());
+          chart.data.datasets[0].data = initialData.map(data => data.voltage);
+
+          // Check if initial voltages exceed 10 and set borderColor accordingly
+          const initialBorderColor = initialData.map(data => (data.voltage > {{$max_voltage}} ? 'red' : 'black'));
+          chart.data.datasets[0].borderColor = initialBorderColor;
+
+          chart.update();
+      });
+
+      // Periodically update the chart
+      setInterval(() => {
+          updateChart(chart);
+      }, 3000); // Update every 3 seconds (adjust as needed)
+  }
+
+  document.addEventListener('DOMContentLoaded', initChart);
+</script>
+
+<script>
+     function updateMaxVoltageInput() {
+    const selectElement = document.querySelector('select[name="device_key"]');
+    const maxVoltageInput = document.getElementById('max_voltage');
+    const selectedOption = selectElement.options[selectElement.selectedIndex];
+    
+    // Set nilai max_voltage pada input
+    maxVoltageInput.value = selectedOption.getAttribute('data-max_voltage');
+    
+  }
+</script>
+
+
+@stop
+
+@extends('layouts.app')
+
+@section('content')
+
+<div class="page-heading">
+    <h3>{{isset($label_page) ? $label_page : 'Label Not Found'}}</h3>
+</div>
+         
+<div class="page-content">
+          	<div class="row">
+          		<div class="col-12 col-md-12 col-lg-12">
+                <div class="card">
+                  <div class="card-header">
+                    {{-- <h4>Data</h4> --}}
+                    <div class="card-header-action">
+                      <form action="" method="GET">
+                      <select name="device_key" class="form-select fw-bold border-dark" onchange="updateMaxVoltageInput();this.form.submit()">
+                          <option value="">Pilih Device</option>
+                          @foreach ($devices as $device)
+                          <option value="{{$device->device_key}}" data-max_voltage="{{$device->max_voltage}}" {{($device->device_key == $device_key ? 'selected' : '')}} data-max_voltage="{{$device->max_voltage}}">Device : {{$device->nama}} / Site : {{$device->site}}</option>
+                          @endforeach
+                      </select>
+                      <input type="hidden" name="max_voltage" id="max_voltage" />
+                      </form>
+
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    @if($device_key)
+                    <div id="realTimeChartContainer">
+                      <canvas id="realTimeChart" width="400" height="200"></canvas>
+                  </div>
+                  @else
+                    <div class="btn btn-dark">Silahkan pilih device</div>
+                  @endif
+                  </div>
+                </div>
+              </div>
+             </div>
+
+
+ @endsection
+
